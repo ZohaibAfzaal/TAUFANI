@@ -68,7 +68,7 @@ new class extends Component
 
         $results = [];
         foreach ($balanceMap as $k => $val) {
-            if (abs($val) < 0.01) continue;
+            if (abs($val) < 0.5) continue;
             
             [$a, $b] = explode('|', $k);
             if ($val > 0) {
