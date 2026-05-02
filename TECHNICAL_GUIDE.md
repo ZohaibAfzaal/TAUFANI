@@ -1,4 +1,4 @@
-# Technical Guide: direct-debt-main
+# Technical Guide: Taufani
 
 This document provides an overview of the project's technology stack, setup implementation, and essential commands for development.
 
@@ -39,4 +39,4 @@ Run these commands from the `taufani-laravel` directory:
 *   **Optimize App**: `..\php\php.exe artisan optimize:clear`
 
 ---
-*Created by Antigravity AI - 2026-05-02*
+*Created by Mastermin Taufani Boys - 2026-05-02*
