@@ -39,4 +39,4 @@ Run these commands from the `taufani-laravel` directory:
 *   **Optimize App**: `..\php\php.exe artisan optimize:clear`
 
 ---
-*Created by Mastermin Taufani Boys - 2026-05-02*
+*Created by Mastermind Taufani Boys - 2026-05-02*
