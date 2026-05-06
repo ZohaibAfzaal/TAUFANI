@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Expense extends Model
 {
-    protected $fillable = ['group_id', 'description', 'amount', 'paid_by', 'split_type', 'date'];
+    use HasFactory;
+    protected $fillable = ['group_id', 'description', 'category', 'amount', 'paid_by', 'split_type', 'date'];
 
     protected $casts = [
         'date' => 'date',

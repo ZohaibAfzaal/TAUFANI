@@ -1,9 +1,7 @@
 <?php
 
 use Livewire\Volt\Component;
-use App\Models\Expense;
-use App\Models\Settlement;
-use App\Models\User;
+use App\Services\BalanceCalculator;
 use Illuminate\Support\Facades\Auth;
 
 new class extends Component
@@ -11,162 +9,121 @@ new class extends Component
     public function with()
     {
         $user = Auth::user();
-        $pairBalances = $this->calculateBalances();
+        $groupIds = $user->groups()->pluck('groups.id');
 
-        $youOwe = collect($pairBalances)->where('from', $user->id)->sum('amount');
-        $owedToYou = collect($pairBalances)->where('to', $user->id)->sum('amount');
+        $calculator = new BalanceCalculator();
+        $balances   = $calculator->withUsers(
+            $calculator->calculate($groupIds, $user->id)
+        );
+
+        $youOwe    = collect($balances)->where('from', $user->id)->sum('amount');
+        $owedToYou = collect($balances)->where('to', $user->id)->sum('amount');
         $netBalance = $owedToYou - $youOwe;
 
         return [
             'netBalance' => $netBalance,
-            'youOwe' => $youOwe,
-            'owedToYou' => $owedToYou,
-            'details' => $pairBalances,
-            'user' => $user,
+            'youOwe'     => $youOwe,
+            'owedToYou'  => $owedToYou,
+            'details'    => $balances,
+            'user'       => $user,
         ];
-    }
-
-    protected function calculateBalances()
-    {
-        $currentUserId = Auth::id();
-        $balanceMap = [];
-
-        $pairKey = function($a, $b) {
-            return $a < $b ? "$a|$b" : "$b|$a";
-        };
-        $pairSign = function($from, $to) {
-            return $from < $to ? 1 : -1;
-        };
-
-        $groupIds = Auth::user()->groups()->pluck('groups.id');
-        $expenses = Expense::whereIn('group_id', $groupIds)->with(['participants'])->get();
-
-        foreach ($expenses as $exp) {
-            $n = $exp->participants->count();
-            if ($n === 0) continue;
-
-            foreach ($exp->participants as $p) {
-                if ($p->id === $exp->paid_by) continue;
-
-                $share = ($exp->split_type === 'custom') 
-                    ? ($p->pivot->amount ?? 0) 
-                    : ($exp->amount / $n);
-
-                $k = $pairKey($p->id, $exp->paid_by);
-                $s = $pairSign($p->id, $exp->paid_by);
-                
-                $balanceMap[$k] = ($balanceMap[$k] ?? 0) + ($share * $s);
-            }
-        }
-
-        $settlements = Settlement::whereIn('group_id', $groupIds)->get();
-        foreach ($settlements as $stl) {
-            $k = $pairKey($stl->from_id, $stl->to_id);
-            $s = $pairSign($stl->from_id, $stl->to_id);
-            $balanceMap[$k] = ($balanceMap[$k] ?? 0) - ($stl->amount * $s);
-        }
-
-        $results = [];
-        foreach ($balanceMap as $k => $val) {
-            if (abs($val) < 0.5) continue;
-            
-            [$a, $b] = explode('|', $k);
-            if ($val > 0) {
-                $results[] = ['from' => (int)$a, 'to' => (int)$b, 'amount' => round($val, 2)];
-            } else {
-                $results[] = ['from' => (int)$b, 'to' => (int)$a, 'amount' => round(-$val, 2)];
-            }
-        }
-
-        return array_filter($results, function($b) use ($currentUserId) {
-            return $b['from'] === $currentUserId || $b['to'] === $currentUserId;
-        });
     }
 };
 ?>
 
-<div class="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-    <!-- Premium Balance Card -->
-    <div class="relative overflow-hidden rounded-[2.5rem] bg-slate-900 p-8 text-white shadow-2xl shadow-indigo-200">
-        <!-- Background Decorative Elements -->
-        <div class="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl"></div>
-        <div class="absolute -left-12 -bottom-12 h-64 w-64 rounded-full bg-rose-500/10 blur-3xl"></div>
-        
+<div class="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+
+    <!-- Greeting -->
+    <div class="px-1">
+        <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Good {{ now()->hour < 12 ? 'morning' : (now()->hour < 18 ? 'afternoon' : 'evening') }}</p>
+        <h2 class="text-xl font-extrabold text-slate-900 mt-0.5">{{ explode(' ', $user->name)[0] }}</h2>
+    </div>
+
+    <!-- Balance Card -->
+    <div class="relative overflow-hidden rounded-[2rem] bg-slate-900 p-7 text-white shadow-2xl shadow-slate-900/20">
+        <div class="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-indigo-500/20 blur-3xl pointer-events-none"></div>
+        <div class="absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl pointer-events-none"></div>
+
         <div class="relative">
-            <p class="text-xs font-bold uppercase tracking-[0.2em] text-indigo-300/80">Total Net Balance</p>
-            <div class="mt-2 flex items-baseline gap-2">
-                <span class="text-2xl font-light text-indigo-200">RS</span>
-                <h1 class="text-5xl font-black tracking-tighter">
-                    {{ number_format(abs($netBalance), 0) }}<span class="text-2xl">.{{ substr(number_format(abs($netBalance), 2), -2) }}</span>
-                </h1>
+            <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Net Balance</p>
+            <div class="mt-1.5 flex items-baseline gap-1.5">
+                <span class="text-xl font-light text-slate-400">RS</span>
+                <span class="text-5xl font-black tracking-tighter leading-none">{{ number_format(abs($netBalance), 0) }}</span>
+                <span class="text-2xl font-black text-slate-400">.{{ substr(number_format(abs($netBalance), 2), -2) }}</span>
             </div>
-            
-            <div class="mt-8 grid grid-cols-2 gap-4">
-                <div class="rounded-3xl bg-white/5 p-4 backdrop-blur-md border border-white/10">
-                    <div class="flex items-center gap-2 text-rose-400">
-                        <div class="rounded-full bg-rose-400/20 p-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+            <p class="mt-1 text-[11px] font-medium text-slate-500">
+                @if($netBalance > 0.01)
+                    You are owed overall
+                @elseif($netBalance < -0.01)
+                    You owe overall
+                @else
+                    All settled up
+                @endif
+            </p>
+
+            <div class="mt-6 grid grid-cols-2 gap-3">
+                <div class="rounded-2xl bg-white/5 border border-white/8 p-4">
+                    <div class="flex items-center gap-2">
+                        <div class="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/20">
+                            <x-icon name="arrow-up" class="w-3 h-3 text-rose-400" stroke-width="3" />
                         </div>
-                        <span class="text-[10px] font-bold uppercase tracking-wider">You Owe</span>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">You Owe</span>
                     </div>
-                    <p class="mt-2 text-xl font-bold">RS{{ number_format($youOwe, 0) }}</p>
+                    <p class="mt-2.5 text-xl font-black">RS{{ number_format($youOwe, 0) }}</p>
                 </div>
-                
-                <div class="rounded-3xl bg-white/5 p-4 backdrop-blur-md border border-white/10">
-                    <div class="flex items-center gap-2 text-emerald-400">
-                        <div class="rounded-full bg-emerald-400/20 p-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m19 12-7 7-7-7"/><path d="M12 5v14"/></svg>
+
+                <div class="rounded-2xl bg-white/5 border border-white/8 p-4">
+                    <div class="flex items-center gap-2">
+                        <div class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20">
+                            <x-icon name="arrow-down" class="w-3 h-3 text-emerald-400" stroke-width="3" />
                         </div>
-                        <span class="text-[10px] font-bold uppercase tracking-wider">Owed to You</span>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Owed to You</span>
                     </div>
-                    <p class="mt-2 text-xl font-bold">RS{{ number_format($owedToYou, 0) }}</p>
+                    <p class="mt-2.5 text-xl font-black">RS{{ number_format($owedToYou, 0) }}</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Details Section -->
-    <div class="space-y-4">
-        <div class="flex items-center justify-between px-2">
-            <h3 class="text-sm font-black uppercase tracking-widest text-slate-400">Active Debts</h3>
-            <span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-500">{{ count($details) }} entries</span>
+    <!-- Debt List -->
+    <div class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+            <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Active Debts</h3>
+            @if(count($details))
+                <span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-500">{{ count($details) }}</span>
+            @endif
         </div>
-        
-        <div class="grid gap-3">
-            @forelse($details as $item)
-                @php
-                    $isOwed = $item['to'] === $user->id;
-                    $otherUser = App\Models\User::find($isOwed ? $item['from'] : $item['to']);
-                @endphp
-                <div class="group relative flex items-center justify-between rounded-[2rem] bg-white p-5 shadow-sm border border-slate-100 transition-all hover:shadow-md hover:-translate-y-0.5">
-                    <div class="flex items-center gap-4">
-                        <div class="relative">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-xl font-bold text-slate-700 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                                {{ substr($otherUser->name, 0, 1) }}
-                            </div>
-                            <div class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white {{ $isOwed ? 'bg-emerald-500' : 'bg-rose-500' }}"></div>
+
+        @forelse($details as $item)
+            @php
+                $isOwed    = $item['to'] === $user->id;
+                $otherUser = $isOwed ? $item['fromUser'] : $item['toUser'];
+            @endphp
+            <div class="group flex items-center justify-between rounded-[1.5rem] bg-white border border-slate-100 p-4 shadow-sm transition-all hover:shadow-md hover:-translate-y-px">
+                <div class="flex items-center gap-3.5">
+                    <div class="relative shrink-0">
+                        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-50 text-base font-bold text-slate-700 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                            {{ strtoupper(substr($otherUser->name, 0, 1)) }}
                         </div>
-                        <div>
-                            <p class="text-sm font-bold text-slate-900">{{ $otherUser->name }}</p>
-                            <p class="text-[10px] font-medium text-slate-500">{{ $isOwed ? 'is waiting to pay you' : 'is waiting for your payment' }}</p>
-                        </div>
+                        <div class="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white {{ $isOwed ? 'bg-emerald-500' : 'bg-rose-500' }}"></div>
                     </div>
-                    <div class="text-right">
-                        <p class="text-lg font-black tracking-tight {{ $isOwed ? 'text-emerald-600' : 'text-rose-600' }}">
-                            {{ $isOwed ? '+' : '-' }}RS{{ number_format($item['amount'], 0) }}
-                        </p>
-                        <p class="text-[9px] font-bold uppercase tracking-tighter text-slate-300">Outstanding</p>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-900">{{ $otherUser->name }}</p>
+                        <p class="text-[11px] text-slate-400">{{ $isOwed ? 'owes you' : 'you owe them' }}</p>
                     </div>
                 </div>
-            @empty
-                <div class="flex flex-col items-center justify-center rounded-[2.5rem] border-2 border-dashed border-slate-100 p-16 text-center">
-                    <div class="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-50">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-slate-300"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
-                    </div>
-                    <h4 class="text-sm font-bold text-slate-900">Crystal Clear!</h4>
-                    <p class="mt-1 text-xs text-slate-400">You don't have any pending debts with anyone.</p>
+                <p class="text-base font-black tracking-tight {{ $isOwed ? 'text-emerald-600' : 'text-rose-500' }}">
+                    {{ $isOwed ? '+' : '-' }}RS{{ number_format($item['amount'], 0) }}
+                </p>
+            </div>
+        @empty
+            <div class="flex flex-col items-center justify-center rounded-[2rem] border-2 border-dashed border-slate-100 py-16 text-center">
+                <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
+                    <x-icon name="circle-check" class="w-8 h-8 text-emerald-400" stroke-width="1.5" />
                 </div>
-            @endforelse
-        </div>
+                <p class="text-sm font-semibold text-slate-900">All clear!</p>
+                <p class="mt-1 text-xs text-slate-400">No pending debts right now.</p>
+            </div>
+        @endforelse
     </div>
 </div>

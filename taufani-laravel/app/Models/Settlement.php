@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Settlement extends Model
 {
+    use HasFactory;
     protected $fillable = ['group_id', 'from_id', 'to_id', 'amount', 'date', 'note'];
 
     protected $casts = [

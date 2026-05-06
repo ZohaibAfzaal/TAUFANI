@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "taufani/app",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Taufani — group expense splitting and debt tracking app.",
+    "keywords": ["laravel", "livewire", "expense-splitting"],
     "license": "MIT",
     "require": {
         "php": "^8.3",

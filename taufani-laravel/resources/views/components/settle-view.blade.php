@@ -3,7 +3,7 @@
 use Livewire\Volt\Component;
 use App\Models\Group;
 use App\Models\Settlement;
-use App\Models\User;
+use App\Services\BalanceCalculator;
 use Illuminate\Support\Facades\Auth;
 
 new class extends Component
@@ -12,35 +12,57 @@ new class extends Component
     public $fromId = '';
     public $toId = '';
     public $amount = '';
+    public $note = '';
     public $date;
 
     public function mount()
     {
         $this->date = date('Y-m-d');
-        $this->toId = (string)Auth::id();
+        $this->toId = (string) Auth::id();
+    }
+
+    public function updatedSelectedGroupId($value)
+    {
+        $this->fromId = '';
+        $this->toId   = (string) Auth::id();
+
+        if ($value) {
+            $group       = Group::with('members')->find($value);
+            $otherMember = $group?->members->where('id', '!=', Auth::id())->first();
+            if ($otherMember) {
+                $this->fromId = (string) $otherMember->id;
+            }
+        }
     }
 
     public function with()
     {
-        $groups = Auth::user()->groups()->with('members')->get();
-        $members = $this->selectedGroupId 
-            ? Group::find($this->selectedGroupId)->members 
-            : collect();
-        
-        $recentSettlements = $this->selectedGroupId 
-            ? Settlement::where('group_id', $this->selectedGroupId)->with(['from', 'to'])->latest()->take(5)->get()
+        $groups  = Auth::user()->groups()->with('members')->get();
+        $members = $this->selectedGroupId
+            ? Group::find($this->selectedGroupId)?->members ?? collect()
             : collect();
 
-        if ($this->selectedGroupId && empty($this->fromId)) {
-            // Find someone who ISN'T the current user to be the default payer
-            $otherMember = $members->where('id', '!=', Auth::id())->first();
-            if ($otherMember) $this->fromId = (string)$otherMember->id;
+        $recentSettlements = $this->selectedGroupId
+            ? Settlement::where('group_id', $this->selectedGroupId)
+                ->with(['from', 'to'])
+                ->latest()
+                ->take(5)
+                ->get()
+            : collect();
+
+        $groupBalances = [];
+        if ($this->selectedGroupId) {
+            $calculator    = new BalanceCalculator();
+            $groupBalances = $calculator->withUsers(
+                $calculator->calculate(collect([$this->selectedGroupId]))
+            );
         }
 
         return [
-            'groups' => $groups,
-            'members' => $members,
+            'groups'            => $groups,
+            'members'           => $members,
             'recentSettlements' => $recentSettlements,
+            'groupBalances'     => $groupBalances,
         ];
     }
 
@@ -48,104 +70,139 @@ new class extends Component
     {
         $this->validate([
             'selectedGroupId' => 'required|exists:groups,id',
-            'fromId' => 'required|exists:users,id|different:toId',
-            'toId' => 'required|exists:users,id',
-            'amount' => 'required|numeric|min:0.01',
+            'fromId'          => 'required|exists:users,id|different:toId',
+            'toId'            => 'required|exists:users,id',
+            'amount'          => 'required|numeric|min:0.01',
+            'note'            => 'nullable|string|max:255',
         ]);
 
         Settlement::create([
             'group_id' => $this->selectedGroupId,
-            'from_id' => $this->fromId,
-            'to_id' => $this->toId,
-            'amount' => $this->amount,
-            'date' => $this->date,
+            'from_id'  => $this->fromId,
+            'to_id'    => $this->toId,
+            'amount'   => $this->amount,
+            'date'     => $this->date,
+            'note'     => $this->note ?: null,
         ]);
 
-        session()->flash('success', 'Settlement recorded!');
-        $this->reset(['amount']);
+        $this->reset(['amount', 'note']);
+        $this->dispatch('settlement-saved');
     }
 
     public function deleteSettlement($id)
     {
-        $s = Settlement::findOrFail($id);
-        $s->delete();
+        $settlement = Settlement::findOrFail($id);
+
+        abort_unless(
+            $settlement->from_id === Auth::id() || $settlement->to_id === Auth::id(),
+            403
+        );
+
+        $settlement->delete();
     }
 };
 ?>
 
-<div class="space-y-10 animate-in fade-in duration-500 pb-20">
-    <header class="text-center">
-        <h3 class="text-2xl font-black text-slate-900 tracking-tight">Record Payment</h3>
-        <p class="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Settle debts between friends</p>
-    </header>
+<div class="space-y-8 animate-in fade-in duration-500 pb-20">
+
+    <!-- Header -->
+    <div class="text-center">
+        <h3 class="text-xl font-extrabold text-slate-900">Record Payment</h3>
+        <p class="mt-1 text-xs text-slate-400">Mark a debt as settled between members</p>
+    </div>
 
     @if (session()->has('success'))
-        <div class="rounded-2xl bg-emerald-500 p-4 text-white text-sm font-black border border-emerald-400 animate-in fade-in zoom-in duration-300 shadow-lg shadow-emerald-100 flex items-center gap-3">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        <div class="flex items-center gap-3 rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3 text-sm font-semibold text-emerald-700 shadow-sm animate-in fade-in zoom-in duration-300">
+            <x-icon name="circle-check" class="w-4 h-4 shrink-0 text-emerald-500" stroke-width="2.5" />
             {{ session('success') }}
         </div>
     @endif
 
-    <form wire:submit.prevent="saveSettlement" class="space-y-8">
+    <form wire:submit.prevent="saveSettlement" class="space-y-7">
+
         <!-- Group Selection -->
-        <div class="space-y-3">
-            <label class="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block">Select Group</label>
+        <div class="space-y-2.5">
+            <label class="block text-[11px] font-bold uppercase tracking-widest text-slate-400">Select Group</label>
             <div class="grid grid-cols-2 gap-3">
                 @foreach($groups as $g)
-                    <button 
+                    <button
                         type="button"
                         wire:click="$set('selectedGroupId', {{ $g->id }})"
-                        class="flex flex-col items-center gap-2 rounded-3xl border-2 p-4 transition-all {{ $selectedGroupId == $g->id ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-50 bg-white hover:border-slate-100' }}"
+                        class="flex flex-col items-center gap-2.5 rounded-[1.5rem] border-2 p-4 transition-all {{ $selectedGroupId == $g->id ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-slate-100 bg-white hover:border-slate-200' }}"
                     >
-                        <span class="text-2xl">{{ $g->emoji }}</span>
-                        <span class="text-xs font-black text-slate-700">{{ $g->name }}</span>
+                        <div class="flex h-10 w-10 items-center justify-center rounded-xl {{ $selectedGroupId == $g->id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500' }} transition-colors">
+                            <x-icon :name="$g->emoji" class="w-5 h-5" stroke-width="2" />
+                        </div>
+                        <span class="text-xs font-semibold text-slate-700 text-center leading-tight">{{ $g->name }}</span>
                     </button>
                 @endforeach
             </div>
-            @error('selectedGroupId') <p class="text-[10px] font-bold text-rose-500 px-1">{{ $message }}</p> @enderror
+            @error('selectedGroupId') <p class="text-[11px] font-medium text-rose-500 px-1">{{ $message }}</p> @enderror
         </div>
 
         @if($selectedGroupId)
-            <div class="space-y-8 animate-in slide-in-from-top-4 duration-500">
-                <!-- Who Paid Whom -->
-                <div class="relative grid gap-4">
-                    <div class="space-y-3">
-                        <label class="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block">Who Paid?</label>
+            <div class="space-y-7 animate-in slide-in-from-top-4 duration-300">
+
+                <!-- Balance Summary -->
+                @if(count($groupBalances) > 0)
+                    <div class="space-y-2">
+                        <label class="block text-[11px] font-bold uppercase tracking-widest text-slate-400">Current Balances</label>
+                        @foreach($groupBalances as $b)
+                            <div class="flex items-center justify-between rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3">
+                                <span class="text-xs font-medium text-slate-600">
+                                    {{ $b['from'] === Auth::id() ? 'You owe' : $b['fromUser']->name . ' owes' }}
+                                    {{ $b['to'] === Auth::id() ? 'you' : $b['toUser']->name }}
+                                </span>
+                                <span class="text-sm font-bold text-amber-600">RS{{ number_format($b['amount'], 0) }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-emerald-100 bg-emerald-50/40 py-4">
+                        <x-icon name="circle-check" class="w-4 h-4 text-emerald-400" stroke-width="2" />
+                        <span class="text-xs font-semibold text-emerald-600">All settled up in this group</span>
+                    </div>
+                @endif
+
+                <!-- Who paid → Whom -->
+                <div class="space-y-4">
+                    <div class="space-y-2.5">
+                        <label class="block text-[11px] font-bold uppercase tracking-widest text-slate-400">Who Paid?</label>
                         <div class="flex flex-wrap gap-2">
                             @foreach($members as $m)
-                                <button 
+                                <button
                                     type="button"
                                     wire:click="$set('fromId', {{ $m->id }})"
-                                    class="flex items-center gap-2 rounded-full border-2 px-4 py-2 transition-all {{ $fromId == $m->id ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm' : 'border-slate-50 bg-white text-slate-600' }}"
+                                    class="flex items-center gap-2 rounded-full border-2 px-4 py-2 text-xs font-semibold transition-all {{ $fromId == $m->id ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm' : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200' }}"
                                 >
-                                    <span class="h-4 w-4 rounded-full bg-slate-100 text-[8px] flex items-center justify-center font-black">
-                                        {{ substr($m->name, 0, 1) }}
+                                    <span class="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[8px] font-black text-slate-600">
+                                        {{ strtoupper(substr($m->name, 0, 1)) }}
                                     </span>
-                                    <span class="text-xs font-bold">{{ $m->name }}</span>
+                                    {{ $m->name }}
                                 </button>
                             @endforeach
                         </div>
                     </div>
 
-                    <div class="flex justify-center -my-2 relative z-10">
-                        <div class="h-10 w-10 flex items-center justify-center rounded-full bg-slate-900 text-white shadow-xl rotate-0 transition-transform">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 5 5-5 5"/><path d="m13 7 5 5-5 5"/></svg>
+                    <div class="flex justify-center">
+                        <div class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg">
+                            <x-icon name="arrow-down" class="w-4 h-4" stroke-width="2.5" />
                         </div>
                     </div>
 
-                    <div class="space-y-3">
-                        <label class="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block">To Whom?</label>
+                    <div class="space-y-2.5">
+                        <label class="block text-[11px] font-bold uppercase tracking-widest text-slate-400">To Whom?</label>
                         <div class="flex flex-wrap gap-2">
                             @foreach($members as $m)
-                                <button 
+                                <button
                                     type="button"
                                     wire:click="$set('toId', {{ $m->id }})"
-                                    class="flex items-center gap-2 rounded-full border-2 px-4 py-2 transition-all {{ $toId == $m->id ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm' : 'border-slate-50 bg-white text-slate-600' }}"
+                                    class="flex items-center gap-2 rounded-full border-2 px-4 py-2 text-xs font-semibold transition-all {{ $toId == $m->id ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm' : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200' }}"
                                 >
-                                    <span class="h-4 w-4 rounded-full bg-slate-100 text-[8px] flex items-center justify-center font-black">
-                                        {{ substr($m->name, 0, 1) }}
+                                    <span class="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[8px] font-black text-slate-600">
+                                        {{ strtoupper(substr($m->name, 0, 1)) }}
                                     </span>
-                                    <span class="text-xs font-bold">{{ $m->name }}</span>
+                                    {{ $m->name }}
                                 </button>
                             @endforeach
                         </div>
@@ -153,52 +210,74 @@ new class extends Component
                 </div>
 
                 <!-- Amount -->
-                <div class="space-y-4">
-                    <label class="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block">Settlement Amount</label>
+                <div class="space-y-2.5">
+                    <label class="block text-[11px] font-bold uppercase tracking-widest text-slate-400">Amount</label>
                     <div class="relative">
-                        <span class="absolute left-6 top-1/2 -translate-y-1/2 text-lg font-black text-slate-300">RS</span>
-                        <input 
-                            type="number" 
+                        <span class="absolute left-5 top-1/2 -translate-y-1/2 text-lg font-bold text-slate-300 pointer-events-none">RS</span>
+                        <input
+                            type="number"
                             step="0.01"
                             wire:model="amount"
                             placeholder="0.00"
-                            class="w-full rounded-[2rem] border-slate-50 bg-white pl-14 pr-6 py-6 text-3xl font-black focus:border-indigo-500 focus:ring-0 outline-none transition-all shadow-sm"
+                            class="w-full rounded-[1.75rem] border border-slate-200 bg-white pl-14 pr-6 py-5 text-3xl font-black focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
                         >
                     </div>
-                    @error('amount') <p class="text-[10px] font-bold text-rose-500 px-1">{{ $message }}</p> @enderror
+                    @error('amount') <p class="text-[11px] font-medium text-rose-500 px-1">{{ $message }}</p> @enderror
                 </div>
 
-                <button 
+                <!-- Note -->
+                <div class="space-y-2.5">
+                    <label class="block text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                        Note <span class="normal-case font-normal text-slate-300">(optional)</span>
+                    </label>
+                    <input
+                        type="text"
+                        wire:model="note"
+                        placeholder="e.g. Cash, bank transfer, UPI..."
+                        class="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-medium placeholder-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                    >
+                    @error('note') <p class="text-[11px] font-medium text-rose-500 px-1">{{ $message }}</p> @enderror
+                </div>
+
+                <button
                     type="submit"
-                    class="w-full rounded-2xl bg-indigo-600 py-6 text-sm font-black text-white shadow-xl shadow-indigo-100 transition-all hover:bg-indigo-700 active:scale-95"
+                    class="w-full rounded-2xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-[0.98]"
                 >
                     Record Payment
                 </button>
 
-                <!-- Recent Activity -->
+                <!-- Recent Settlements -->
                 @if($recentSettlements->count() > 0)
-                    <div class="space-y-4 pt-4">
-                        <h4 class="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Recent Settlements</h4>
-                        <div class="space-y-3">
+                    <div class="space-y-3 pt-2">
+                        <h4 class="text-[11px] font-bold uppercase tracking-widest text-slate-400 px-1">Recent Settlements</h4>
+                        <div class="space-y-2">
                             @foreach($recentSettlements as $s)
-                                <div class="group flex items-center justify-between rounded-2xl bg-white p-4 border border-slate-50 shadow-sm">
+                                <div class="flex items-center justify-between rounded-2xl bg-white border border-slate-100 px-4 py-3 shadow-sm">
                                     <div class="flex items-center gap-3">
-                                        <div class="flex -space-x-2">
-                                            <span class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-black border-2 border-white">{{ substr($s->from->name, 0, 1) }}</span>
-                                            <span class="h-6 w-6 rounded-full bg-indigo-100 flex items-center justify-center text-[8px] font-black border-2 border-white">{{ substr($s->to->name, 0, 1) }}</span>
+                                        <div class="flex -space-x-1.5 shrink-0">
+                                            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[9px] font-bold border-2 border-white">{{ strtoupper(substr($s->from->name, 0, 1)) }}</span>
+                                            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-[9px] font-bold border-2 border-white text-indigo-700">{{ strtoupper(substr($s->to->name, 0, 1)) }}</span>
                                         </div>
-                                        <p class="text-[11px] font-bold text-slate-600">
-                                            {{ $s->from->name }} paid {{ $s->to->name }}
-                                        </p>
+                                        <div>
+                                            <p class="text-xs font-semibold text-slate-700">
+                                                {{ $s->from->name }} → {{ $s->to->name }}
+                                            </p>
+                                            @if($s->note)
+                                                <p class="text-[11px] text-slate-400">{{ $s->note }}</p>
+                                            @endif
+                                        </div>
                                     </div>
-                                    <div class="flex items-center gap-3">
-                                        <p class="text-xs font-black text-emerald-600">RS{{ number_format($s->amount, 0) }}</p>
-                                        <button 
-                                            wire:click="deleteSettlement({{ $s->id }})"
-                                            class="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                        </button>
+                                    <div class="flex items-center gap-2 shrink-0">
+                                        <span class="text-sm font-bold text-emerald-600">RS{{ number_format($s->amount, 0) }}</span>
+                                        @if($s->from_id === Auth::id() || $s->to_id === Auth::id())
+                                            <button
+                                                wire:click="deleteSettlement({{ $s->id }})"
+                                                wire:confirm="Delete this settlement?"
+                                                class="flex h-7 w-7 items-center justify-center rounded-xl text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                                            >
+                                                <x-icon name="trash" class="w-3.5 h-3.5" stroke-width="2.5" />
+                                            </button>
+                                        @endif
                                     </div>
                                 </div>
                             @endforeach
