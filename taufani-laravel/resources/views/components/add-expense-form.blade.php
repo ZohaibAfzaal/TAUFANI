@@ -1,12 +1,14 @@
 <?php
 
 use Livewire\Volt\Component;
+use App\Mail\ExpenseAdded;
 use App\Models\Group;
 use App\Models\Expense;
 use App\Models\User;
 use App\Services\GroupContextService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Livewire\Attributes\Layout;
 
 new #[Layout('layouts.app')] class extends Component
@@ -69,20 +71,20 @@ new #[Layout('layouts.app')] class extends Component
                 ->map(fn($id) => (string) $id)
                 ->toArray();
 
-            Log::info('[AddExpense] mounted', $this->logCtx([
-                'group_name'      => $group->name,
-                'members_loaded'  => count($this->participants),
-                'default_paid_by' => $this->paidBy,
-            ]));
+            // Log::info('[AddExpense] mounted', $this->logCtx([
+            //     'group_name'      => $group->name,
+            //     'members_loaded'  => count($this->participants),
+            //     'default_paid_by' => $this->paidBy,
+            // ]));
         } else {
-            Log::warning('[AddExpense] mounted with no active group', $this->logCtx());
+            // Log::warning('[AddExpense] mounted with no active group', $this->logCtx());
         }
     }
 
     public function with(): array
     {
         if (!$this->activeGroupId) {
-            Log::warning('[AddExpense] with() — no activeGroupId, returning empty state', $this->logCtx());
+            // Log::warning('[AddExpense] with() — no activeGroupId, returning empty state', $this->logCtx());
             return ['activeGroup' => null, 'members' => collect()];
         }
 
@@ -90,7 +92,7 @@ new #[Layout('layouts.app')] class extends Component
         $members     = $activeGroup?->members ?? collect();
 
         if (!$activeGroup) {
-            Log::warning('[AddExpense] with() — group not found in DB', $this->logCtx());
+            // Log::warning('[AddExpense] with() — group not found in DB', $this->logCtx());
         }
 
         return ['activeGroup' => $activeGroup, 'members' => $members];
@@ -109,12 +111,12 @@ new #[Layout('layouts.app')] class extends Component
                     $this->category = $icon;
 
                     if ($previous !== $icon) {
-                        Log::info('[AddExpense] category auto-detected', $this->logCtx([
-                            'description' => $value,
-                            'matched_kw'  => $kw,
-                            'category'    => $icon,
-                            'previous'    => $previous,
-                        ]));
+                        // Log::info('[AddExpense] category auto-detected', $this->logCtx([
+                        //     'description' => $value,
+                        //     'matched_kw'  => $kw,
+                        //     'category'    => $icon,
+                        //     'previous'    => $previous,
+                        // ]));
                     }
 
                     return;
@@ -138,22 +140,22 @@ new #[Layout('layouts.app')] class extends Component
             $action = 'added';
         }
 
-        Log::info('[AddExpense] participant toggled', $this->logCtx([
-            'member_id'         => $memberId,
-            'action'            => $action,
-            'participants_now'  => $this->participants,
-        ]));
+        // Log::info('[AddExpense] participant toggled', $this->logCtx([
+        //     'member_id'         => $memberId,
+        //     'action'            => $action,
+        //     'participants_now'  => $this->participants,
+        // ]));
     }
 
     public function goToPreview(): void
     {
-        Log::info('[AddExpense] goToPreview — validating', $this->logCtx([
-            'description'  => $this->description,
-            'amount'       => $this->amount,
-            'paid_by'      => $this->paidBy,
-            'participants' => $this->participants,
-            'split_type'   => $this->splitType,
-        ]));
+        // Log::info('[AddExpense] goToPreview — validating', $this->logCtx([
+        //     'description'  => $this->description,
+        //     'amount'       => $this->amount,
+        //     'paid_by'      => $this->paidBy,
+        //     'participants' => $this->participants,
+        //     'split_type'   => $this->splitType,
+        // ]));
 
         try {
             $this->validate([
@@ -164,32 +166,32 @@ new #[Layout('layouts.app')] class extends Component
                 'participants'  => 'required|array|min:1',
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('[AddExpense] goToPreview — validation failed', $this->logCtx([
-                'errors' => $e->errors(),
-            ]));
+            // Log::warning('[AddExpense] goToPreview — validation failed', $this->logCtx([
+            //     'errors' => $e->errors(),
+            // ]));
             throw $e;
         }
 
         if ($this->splitType === 'custom') {
             $total = array_sum($this->customAmounts);
             if (abs($total - $this->amount) > 0.01) {
-                Log::warning('[AddExpense] goToPreview — custom split mismatch', $this->logCtx([
-                    'expected' => $this->amount,
-                    'got'      => $total,
-                    'diff'     => abs($total - $this->amount),
-                ]));
+                // Log::warning('[AddExpense] goToPreview — custom split mismatch', $this->logCtx([
+                //     'expected' => $this->amount,
+                //     'got'      => $total,
+                //     'diff'     => abs($total - $this->amount),
+                // ]));
                 $this->addError('customAmounts', "Custom amounts total (RS{$total}) must equal RS{$this->amount}");
                 return;
             }
         }
 
-        Log::info('[AddExpense] goToPreview — passed, showing preview', $this->logCtx());
+        // Log::info('[AddExpense] goToPreview — passed, showing preview', $this->logCtx());
         $this->step = 'preview';
     }
 
     public function submitExpense(): void
     {       
-        Log::info('[AddExpense] submitExpense — validating before DB insert', $this->logCtx());
+        // Log::info('[AddExpense] submitExpense — validating before DB insert', $this->logCtx());
 
         try {
             $this->validate([
@@ -200,9 +202,9 @@ new #[Layout('layouts.app')] class extends Component
                 'participants'  => 'required|array|min:1',
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('[AddExpense] submitExpense — validation failed', $this->logCtx([
-                'errors' => $e->errors(),
-            ]));
+            // Log::warning('[AddExpense] submitExpense — validation failed', $this->logCtx([
+            //     'errors' => $e->errors(),
+            // ]));
             throw $e;
         }
 
@@ -217,9 +219,9 @@ new #[Layout('layouts.app')] class extends Component
                 'date'        => $this->date,
             ]);
 
-            Log::info('[AddExpense] submitExpense — expense row created', $this->logCtx([
-                'expense_id' => $expense->id,
-            ]));
+            // Log::info('[AddExpense] submitExpense — expense row created', $this->logCtx([
+            //     'expense_id' => $expense->id,
+            // ]));
 
             foreach ($this->participants as $participantId) {
                 $customAmount = ($this->splitType === 'custom' && isset($this->customAmounts[$participantId]))
@@ -227,11 +229,11 @@ new #[Layout('layouts.app')] class extends Component
                     : null;
                 $expense->participants()->attach($participantId, ['amount' => $customAmount]);
 
-                Log::info('[AddExpense] submitExpense — participant attached', $this->logCtx([
-                    'expense_id'    => $expense->id,
-                    'participant_id' => $participantId,
-                    'custom_amount' => $customAmount,
-                ]));
+                // Log::info('[AddExpense] submitExpense — participant attached', $this->logCtx([
+                //     'expense_id'    => $expense->id,
+                //     'participant_id' => $participantId,
+                //     'custom_amount' => $customAmount,
+                // ]));
             }
         } catch (\Throwable $e) {
             Log::error('[AddExpense] submitExpense — DB error', $this->logCtx([
@@ -241,18 +243,39 @@ new #[Layout('layouts.app')] class extends Component
             throw $e;
         }
 
-        Log::info('[AddExpense] submitExpense — completed successfully', $this->logCtx([
-            'expense_id'       => $expense->id,
-            'total_amount'     => $this->amount,
-            'participant_count' => count($this->participants),
-        ]));
+        // Log::info('[AddExpense] submitExpense — completed successfully', $this->logCtx([
+        //     'expense_id'       => $expense->id,
+        //     'total_amount'     => $this->amount,
+        //     'participant_count' => count($this->participants),
+        // ]));
+
+        // Notify all group members
+        $expense->load(['group', 'payer', 'participants']);
+        $members = $expense->group->members;
+        // Log::info('[Mail] ExpenseAdded — queuing notifications', [
+        //     'expense_id'   => $expense->id,
+        //     'group'        => $expense->group->name,
+        //     'recipient_count' => $members->count(),
+        //     'recipients'   => $members->pluck('email')->all(),
+        // ]);
+        try {
+            $members->each(
+                fn ($member) => Mail::to($member)->send(new ExpenseAdded($expense, $member))
+            );
+            // Log::info('[Mail] ExpenseAdded — sent successfully', ['expense_id' => $expense->id]);
+        } catch (\Throwable $e) {
+            Log::error('[Mail] ExpenseAdded — failed', [
+                'expense_id' => $expense->id,
+                'error'      => $e->getMessage(),
+            ]);
+        }
 
         $this->redirectRoute('dashboard', navigate: true);
     }
 
     public function goBack(): void
     {
-        Log::info('[AddExpense] goBack — returned to input step', $this->logCtx());
+        // Log::info('[AddExpense] goBack — returned to input step', $this->logCtx());
         $this->step = 'input';
     }
 };
@@ -292,32 +315,46 @@ new #[Layout('layouts.app')] class extends Component
                     <x-icon name="{{ $category }}" class="w-5 h-5 text-indigo-600" stroke-width="2" />
                 </div>
                 <input type="text"
-                       wire:model.live="description"
+                       wire:model.live.debounce.400ms="description"
                        placeholder="e.g. Dinner at restaurant"
                        class="flex-1 rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all" />
             </div>
             @error('description') <p class="text-xs text-rose-500">{{ $message }}</p> @enderror
-            <select wire:model.live="category"
-                    class="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-medium text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer">
-                <option value="receipt">📄 General</option>
-                <option value="shopping-cart">🛒 Groceries</option>
-                <option value="utensils">🍽️ Food & Dining</option>
-                <option value="coffee">☕ Beverages</option>
-                <option value="car">🚗 Transport</option>
-                <option value="plane">✈️ Travel</option>
-                <option value="home">🏠 Housing / Rent</option>
-                <option value="wifi">📶 Internet / Utilities</option>
-                <option value="zap">⚡ Electricity</option>
-                <option value="flame">🔥 Gas</option>
-                <option value="droplets">💧 Water</option>
-                <option value="heart-pulse">🏥 Health</option>
-                <option value="graduation-cap">🎓 Education</option>
-                <option value="film">🎬 Entertainment</option>
-                <option value="shirt">👕 Shopping</option>
-                <option value="music">🎵 Music / Events</option>
-                <option value="smartphone">📱 Electronics</option>
-                <option value="trophy">🏆 Sports</option>
-            </select>
+            @php
+                $categoryOptions = [
+                    'receipt'        => 'General',
+                    'shopping-cart'  => 'Groceries',
+                    'utensils'       => 'Food',
+                    'coffee'         => 'Drinks',
+                    'car'            => 'Transport',
+                    'plane'          => 'Travel',
+                    'home'           => 'Housing',
+                    'wifi'           => 'Internet',
+                    'zap'            => 'Electric',
+                    'flame'          => 'Gas',
+                    'droplets'       => 'Water',
+                    'heart-pulse'    => 'Health',
+                    'graduation-cap' => 'Education',
+                    'film'           => 'Fun',
+                    'shirt'          => 'Shopping',
+                    'music'          => 'Music',
+                    'smartphone'     => 'Tech',
+                    'trophy'         => 'Sports',
+                ];
+            @endphp
+            <div class="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style="scrollbar-width:none">
+                @foreach($categoryOptions as $icon => $label)
+                    <button type="button"
+                            wire:click="$set('category', '{{ $icon }}')"
+                            class="flex-shrink-0 flex flex-col items-center gap-1.5 rounded-2xl border px-3 py-2.5 transition-all
+                                   {{ $category === $icon
+                                        ? 'border-indigo-500 bg-indigo-50 shadow-sm shadow-indigo-100'
+                                        : 'border-slate-200 bg-white hover:border-slate-300' }}">
+                        <x-icon name="{{ $icon }}" class="w-4 h-4 {{ $category === $icon ? 'text-indigo-600' : 'text-slate-400' }}" stroke-width="2" />
+                        <span class="text-[9px] font-bold {{ $category === $icon ? 'text-indigo-700' : 'text-slate-500' }}">{{ $label }}</span>
+                    </button>
+                @endforeach
+            </div>
         </div>
 
         {{-- ② Amount ───────────────────────────────────────────────────── --}}
@@ -326,7 +363,7 @@ new #[Layout('layouts.app')] class extends Component
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-black text-slate-300">RS</span>
                 <input type="number"
-                       wire:model.live="amount"
+                       wire:model.blur="amount"
                        step="0.01" min="0.01"
                        placeholder="0"
                        class="flex-1 bg-transparent text-4xl font-black text-slate-900 placeholder-slate-200 border-0 p-0 focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
@@ -424,13 +461,13 @@ new #[Layout('layouts.app')] class extends Component
                                 </span>
                             </button>
                             {{-- RS amount input --}}
-                            <div class="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 mr-3">
-                                <span class="text-xs font-bold text-slate-400">RS</span>
+                            <div class="flex shrink-0 items-center gap-1 border-l border-slate-200 px-4 py-3.5">
+                                <span class="text-xs font-black text-slate-400 leading-none">RS</span>
                                 <input type="number"
                                        step="0.01" min="0"
-                                       wire:model.live="customAmounts.{{ $member->id }}"
-                                       placeholder="0.00"
-                                       class="w-20 bg-transparent text-sm font-semibold text-slate-900 placeholder-slate-300 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                                       wire:model.blur="customAmounts.{{ $member->id }}"
+                                       placeholder="0"
+                                       class="w-16 border-0 bg-transparent text-sm font-bold text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                             </div>
                         </div>
                     @endforeach
@@ -531,8 +568,16 @@ new #[Layout('layouts.app')] class extends Component
                     Back
                 </button>
                 <button wire:click="submitExpense"
-                        class="flex-1 rounded-2xl bg-indigo-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-[0.98]">
-                    Confirm & Save
+                        wire:loading.attr="disabled"
+                        wire:loading.class="opacity-75 cursor-not-allowed"
+                        wire:target="submitExpense"
+                        class="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-[0.98]">
+                    <svg wire:loading wire:target="submitExpense" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span wire:loading.remove wire:target="submitExpense">Confirm & Save</span>
+                    <span wire:loading wire:target="submitExpense">Saving…</span>
                 </button>
             </div>
         </div>

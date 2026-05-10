@@ -114,6 +114,16 @@ new #[Layout('layouts.app')] class extends Component
         $this->sortBy = 'latest';
         $this->resetPage();
     }
+
+    public function deleteExpense(int $id): void
+    {
+        $expense = Expense::findOrFail($id);
+        $group = \App\Models\Group::find($this->activeGroupId);
+        abort_unless($group && $group->members()->where('users.id', Auth::id())->exists(), 403);
+        $expense->participants()->detach();
+        $expense->delete();
+        $this->resetPage();
+    }
 };
 ?>
 
@@ -176,42 +186,56 @@ new #[Layout('layouts.app')] class extends Component
         </div>
 
         {{-- Expense list --}}
-        <div class="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
-            @if($expenses->count())
-                <div class="divide-y divide-slate-50">
-                    @foreach($expenses as $expense)
-                        <div class="flex items-center gap-3 px-5 py-4 hover:bg-slate-50/50 transition-colors">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100">
-                                <x-icon name="{{ $expense->category ?? 'receipt' }}" class="w-4 h-4 text-slate-600" stroke-width="2" />
+        @if($expenses->count())
+            <div class="space-y-3">
+                @foreach($expenses as $expense)
+                    <div class="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
+                        <div class="flex items-start gap-3 px-4 pt-4 pb-3">
+                            {{-- Category icon --}}
+                            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50">
+                                <x-icon name="{{ $expense->category ?? 'receipt' }}" class="w-5 h-5 text-indigo-600" stroke-width="2" />
                             </div>
+                            {{-- Info --}}
                             <div class="flex-1 min-w-0">
-                                <p class="text-sm font-semibold text-slate-900 truncate">{{ $expense->description }}</p>
-                                <div class="flex items-center gap-1.5 mt-0.5">
-                                    <span class="text-xs text-slate-400">{{ $expense->payer->name }}</span>
-                                    <span class="text-slate-200">·</span>
-                                    <span class="text-xs text-slate-400">{{ $expense->date->format('M d, Y') }}</span>
-                                    <span class="text-slate-200">·</span>
-                                    <span class="text-xs text-slate-400">{{ $expense->participants->count() }} people</span>
-                                </div>
+                                <p class="text-sm font-bold text-slate-900 truncate">{{ $expense->description }}</p>
+                                <p class="text-xs text-slate-400 mt-0.5">
+                                    Paid by <span class="font-semibold text-slate-600">{{ $expense->payer->name }}</span>
+                                    · {{ $expense->date->format('M d') }}
+                                </p>
                             </div>
-                            <div class="text-right shrink-0">
-                                <p class="text-sm font-bold text-slate-900">RS{{ number_format($expense->amount, 0) }}</p>
-                                <p class="text-[10px] font-semibold text-slate-400 mt-0.5">{{ $expense->split_type === 'equal' ? 'Equal' : 'Custom' }}</p>
+                            {{-- Amount + delete --}}
+                            <div class="flex flex-col items-end gap-2 shrink-0">
+                                <p class="text-sm font-black text-slate-900">RS{{ number_format($expense->amount, 0) }}</p>
+                                <button wire:click="deleteExpense({{ $expense->id }})"
+                                        onclick="return confirm('Delete \'{{ addslashes($expense->description) }}\'?')"
+                                        class="text-slate-300 hover:text-rose-500 transition-colors">
+                                    <x-icon name="trash" class="w-4 h-4" stroke-width="2" />
+                                </button>
                             </div>
                         </div>
-                    @endforeach
-                </div>
-                <div class="px-5 py-4 border-t border-slate-100 bg-slate-50/50">
-                    {{ $expenses->links() }}
-                </div>
-            @else
-                <div class="py-14 text-center">
-                    <x-icon name="receipt" class="w-10 h-10 text-slate-200 mx-auto mb-3" stroke-width="1.5" />
-                    <p class="text-sm font-semibold text-slate-500">No expenses found</p>
-                    <p class="text-xs text-slate-400 mt-1">Try adjusting your filters</p>
-                </div>
-            @endif
-        </div>
+                        {{-- Participant chips --}}
+                        @if($expense->participants->count() > 0)
+                            <div class="flex flex-wrap gap-1.5 px-4 pb-3">
+                                @foreach($expense->participants as $p)
+                                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+                                        {{ explode(' ', $p->name)[0] }}
+                                    </span>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+            <div class="pt-2">
+                {{ $expenses->links() }}
+            </div>
+        @else
+            <div class="rounded-2xl bg-white border border-slate-100 shadow-sm py-14 text-center">
+                <x-icon name="receipt" class="w-10 h-10 text-slate-200 mx-auto mb-3" stroke-width="1.5" />
+                <p class="text-sm font-semibold text-slate-500">No expenses found</p>
+                <p class="text-xs text-slate-400 mt-1">Try adjusting your filters</p>
+            </div>
+        @endif
     </div>
 @endif
 </div>

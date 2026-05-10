@@ -7,6 +7,15 @@
 
         <title>{{ config('app.name', 'Taufani') }}</title>
 
+        <!-- PWA -->
+        <link rel="manifest" href="/manifest.json">
+        <meta name="theme-color" content="#6366f1">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Taufani">
+        <link rel="apple-touch-icon" href="/icons/icon.svg">
+
         <!-- Plus Jakarta Sans — variable font (200–800) -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -83,6 +92,11 @@
                     <div class="flex-1 min-w-0 max-w-[200px]">
                         <livewire:group-switcher-nav />
                     </div>
+
+                    <a href="{{ route('settings') }}" wire:navigate
+                       class="shrink-0 flex h-9 w-9 items-center justify-center rounded-2xl transition-all {{ request()->routeIs('settings') ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600' }}">
+                        <x-icon name="settings" class="w-4 h-4" stroke-width="2" />
+                    </a>
 
                     <a href="{{ route('profile.edit') }}" wire:navigate
                        class="shrink-0 relative flex h-9 w-9 items-center justify-center rounded-2xl overflow-hidden border-2 {{ request()->routeIs('profile.edit') ? 'border-indigo-500' : 'border-slate-100' }} transition-all hover:border-indigo-300 shadow-sm">
@@ -181,6 +195,11 @@
                 document.addEventListener('livewire:navigate', () => showLoading());
                 document.addEventListener('livewire:navigated', () => hideLoading());
             });
+
+            // Register service worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js');
+            }
         </script>
     </body>
 </html>

@@ -5,7 +5,8 @@
       "PowerShell(Get-NetTCPConnection -State Listen | Select-Object LocalPort,OwningProcess | Sort-Object LocalPort | Where-Object {$_.LocalPort -lt 65000 -and $_.LocalPort -gt 79} | Select-Object -First 30)",
       "PowerShell(netstat -ano)",
       "PowerShell(cd \"e:\\\\Projects\\\\TAUFANI\\\\taufani-laravel\"; \\(Get-Content .env\\) -replace 'APP_URL=http://localhost$', 'APP_URL=http://localhost:8000' | Set-Content .env; Select-String \"APP_URL\" .env)",
-      "Bash(php artisan *)"
+      "Bash(php artisan *)",
+      "Bash(npm run *)"
     ]
   }
 }

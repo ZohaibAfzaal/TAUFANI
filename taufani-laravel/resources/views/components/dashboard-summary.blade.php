@@ -51,6 +51,32 @@ new #[Layout('layouts.app')] class extends Component
             ->get();
         $maxCategory = $categorySpending->max('total') ?: 1;
 
+        // 7-day spending trend
+        $last7Days = collect();
+        for ($i = 6; $i >= 0; $i--) {
+            $date = now()->subDays($i)->format('Y-m-d');
+            $total = $activeGroup->expenses()->whereDate('date', $date)->sum('amount');
+            $last7Days->push([
+                'day'   => now()->subDays($i)->format('D'),
+                'date'  => $date,
+                'total' => (float) $total,
+            ]);
+        }
+        $maxDay = $last7Days->max('total') ?: 1;
+
+        // Member spending (who has paid the most)
+        $memberSpending = $activeGroup->expenses()
+            ->selectRaw('paid_by, SUM(amount) as total')
+            ->groupBy('paid_by')
+            ->orderByDesc('total')
+            ->limit(5)
+            ->get()
+            ->map(fn($row) => (object)[
+                'total' => $row->total,
+                'payer' => \App\Models\User::find($row->paid_by),
+            ]);
+        $maxMember = $memberSpending->max('total') ?: 1;
+
         return [
             'activeGroup' => $activeGroup,
             'netBalance' => $netBalance,
@@ -60,6 +86,10 @@ new #[Layout('layouts.app')] class extends Component
             'activeDebts' => $activeDebts,
             'categorySpending' => $categorySpending,
             'maxCategory' => $maxCategory,
+            'last7Days' => $last7Days,
+            'maxDay' => $maxDay,
+            'memberSpending' => $memberSpending,
+            'maxMember' => $maxMember,
             'user' => $user,
         ];
     }
@@ -74,6 +104,10 @@ new #[Layout('layouts.app')] class extends Component
     $recentExpenses   = $recentExpenses   ?? collect();
     $categorySpending = $categorySpending ?? collect();
     $maxCategory      = $maxCategory      ?? 1;
+    $last7Days        = $last7Days        ?? collect();
+    $maxDay           = $maxDay           ?? 1;
+    $memberSpending   = $memberSpending   ?? collect();
+    $maxMember        = $maxMember        ?? 1;
     $user             = $user             ?? Auth::user();
 @endphp
 
@@ -145,7 +179,157 @@ new #[Layout('layouts.app')] class extends Component
             </a>
         </div>
 
-        {{-- Spending by category chart --}}
+        {{-- ── Chart.js: 7-Day Spending Trend ─────────────────────────── --}}
+        @php
+            $trendLabels = $last7Days->pluck('day')->toArray();
+            $trendData   = $last7Days->pluck('total')->toArray();
+            $weekTotal   = $last7Days->sum('total');
+        @endphp
+        @if($weekTotal > 0)
+            <div class="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-900">7-Day Trend</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">RS{{ number_format($weekTotal, 0) }} this week</p>
+                </div>
+                {{-- data-* attrs use single quotes; JSON_HEX_APOS escapes any ' inside safely --}}
+                <div class="px-4 pb-4 pt-3"
+                     x-data="{ chart: null,
+                         initChart() {
+                             if (this.chart) { this.chart.destroy(); this.chart = null; }
+                             const labels = JSON.parse(this.$el.getAttribute('data-labels'));
+                             const values = JSON.parse(this.$el.getAttribute('data-values'));
+                             const ctx = this.$refs.canvas.getContext('2d');
+                             const grad = ctx.createLinearGradient(0, 0, 0, 130);
+                             grad.addColorStop(0, 'rgba(99,102,241,0.3)');
+                             grad.addColorStop(1, 'rgba(99,102,241,0.02)');
+                             this.chart = new window.Chart(ctx, {
+                                 type: 'bar',
+                                 data: { labels, datasets: [{ data: values, backgroundColor: grad,
+                                     borderColor: '#6366f1', borderWidth: 2,
+                                     borderRadius: 8, borderSkipped: false }] },
+                                 options: { responsive: true, maintainAspectRatio: false,
+                                     plugins: { legend: { display: false },
+                                         tooltip: { backgroundColor: '#1e293b', titleColor: '#94a3b8',
+                                             bodyColor: '#f8fafc', padding: 10, cornerRadius: 10,
+                                             callbacks: { label: c => ' RS ' + c.parsed.y.toLocaleString() } } },
+                                     scales: {
+                                         x: { grid: { display: false }, border: { display: false },
+                                              ticks: { font: { size: 10, weight: '700' }, color: '#94a3b8' } },
+                                         y: { display: false } } }
+                             });
+                         }
+                     }"
+                     x-init="initChart(); $cleanup(() => { if (chart) chart.destroy(); })"
+                     data-labels='@json($trendLabels)'
+                     data-values='@json($trendData)'>
+                    <canvas x-ref="canvas" style="height:130px"></canvas>
+                </div>
+            </div>
+        @endif
+
+        {{-- ── Chart.js: Category Doughnut ─────────────────────────────── --}}
+        @if($categorySpending->count() > 1)
+            @php
+                $catLabelMap = [
+                    'receipt'=>'General','shopping-cart'=>'Groceries','utensils'=>'Food',
+                    'coffee'=>'Drinks','car'=>'Transport','plane'=>'Travel','home'=>'Housing',
+                    'wifi'=>'Internet','zap'=>'Electric','flame'=>'Gas','droplets'=>'Water',
+                    'heart-pulse'=>'Health','graduation-cap'=>'Education','film'=>'Fun',
+                    'shirt'=>'Shopping','music'=>'Music','smartphone'=>'Tech','trophy'=>'Sports',
+                ];
+                $donutLabels = $categorySpending->map(fn($r) => $catLabelMap[$r->category ?? 'receipt'] ?? 'General')->toArray();
+                $donutData   = $categorySpending->pluck('total')->map(fn($v) => (float)$v)->toArray();
+                $donutColors = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981'];
+                $slicedColors = array_slice($donutColors, 0, count($donutLabels));
+            @endphp
+            <div class="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-900">Category Breakdown</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">Where the money goes</p>
+                </div>
+                <div class="flex items-center gap-4 px-5 py-5"
+                     x-data="{ chart: null,
+                         initChart() {
+                             if (this.chart) { this.chart.destroy(); this.chart = null; }
+                             const labels = JSON.parse(this.$el.getAttribute('data-labels'));
+                             const values = JSON.parse(this.$el.getAttribute('data-values'));
+                             const colors = JSON.parse(this.$el.getAttribute('data-colors'));
+                             this.chart = new window.Chart(this.$refs.canvas.getContext('2d'), {
+                                 type: 'doughnut',
+                                 data: { labels, datasets: [{ data: values, backgroundColor: colors,
+                                     borderWidth: 3, borderColor: '#fff', hoverOffset: 6 }] },
+                                 options: { responsive: false, cutout: '70%',
+                                     plugins: { legend: { display: false },
+                                         tooltip: { backgroundColor: '#1e293b', titleColor: '#94a3b8',
+                                             bodyColor: '#f8fafc', padding: 10, cornerRadius: 10,
+                                             callbacks: { label: c => ' RS ' + c.parsed.toLocaleString() } } } }
+                             });
+                         }
+                     }"
+                     x-init="initChart(); $cleanup(() => { if (chart) chart.destroy(); })"
+                     data-labels='@json($donutLabels)'
+                     data-values='@json($donutData)'
+                     data-colors='@json($slicedColors)'>
+                    <canvas x-ref="canvas" width="110" height="110" class="shrink-0"></canvas>
+                    <div class="flex-1 space-y-2.5 min-w-0">
+                        @foreach($donutLabels as $i => $lbl)
+                            @php $color = $donutColors[$i % count($donutColors)]; @endphp
+                            <div class="flex items-center gap-2">
+                                <div class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{{ $color }}"></div>
+                                <span class="flex-1 text-xs text-slate-500 truncate">{{ $lbl }}</span>
+                                <span class="text-xs font-bold text-slate-900">RS{{ number_format($donutData[$i], 0) }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        {{-- ── Chart.js: Member Contributions (horizontal bar) ─────────── --}}
+        @if($memberSpending->count() > 1)
+            @php
+                $memberNames    = $memberSpending->map(fn($r) => explode(' ', $r->payer->name ?? 'Unknown')[0])->toArray();
+                $memberTotals   = $memberSpending->pluck('total')->map(fn($v) => (float)$v)->toArray();
+                $memberColors   = array_slice(['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981'], 0, count($memberNames));
+                $memberBarH     = count($memberNames) * 44;
+            @endphp
+            <div class="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-900">Member Contributions</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">Who has paid the most</p>
+                </div>
+                <div class="px-4 py-4"
+                     x-data="{ chart: null,
+                         initChart() {
+                             if (this.chart) { this.chart.destroy(); this.chart = null; }
+                             const labels = JSON.parse(this.$el.getAttribute('data-labels'));
+                             const values = JSON.parse(this.$el.getAttribute('data-values'));
+                             const colors = JSON.parse(this.$el.getAttribute('data-colors'));
+                             this.chart = new window.Chart(this.$refs.canvas.getContext('2d'), {
+                                 type: 'bar',
+                                 data: { labels, datasets: [{ data: values, backgroundColor: colors,
+                                     borderRadius: 8, borderSkipped: false }] },
+                                 options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                                     plugins: { legend: { display: false },
+                                         tooltip: { backgroundColor: '#1e293b', titleColor: '#94a3b8',
+                                             bodyColor: '#f8fafc', padding: 10, cornerRadius: 10,
+                                             callbacks: { label: c => ' RS ' + c.parsed.x.toLocaleString() } } },
+                                     scales: { x: { display: false },
+                                         y: { grid: { display: false }, border: { display: false },
+                                              ticks: { font: { size: 11, weight: '700' }, color: '#475569' } } } }
+                             });
+                         }
+                     }"
+                     x-init="initChart(); $cleanup(() => { if (chart) chart.destroy(); })"
+                     data-labels='@json($memberNames)'
+                     data-values='@json($memberTotals)'
+                     data-colors='@json($memberColors)'>
+                    <canvas x-ref="canvas" style="height:{{ $memberBarH }}px"></canvas>
+                </div>
+            </div>
+        @endif
+
+        {{-- Spending by category (icon bars) --}}
         @if($categorySpending->count() > 0)
             <div class="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
                 <div class="px-5 py-4 border-b border-slate-100">

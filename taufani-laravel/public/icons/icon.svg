@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Indigo rounded square background -->
+  <rect width="512" height="512" rx="115" fill="#6366f1"/>
+  <!-- Lucide "layers" icon, scaled and centered -->
+  <g transform="translate(88,88) scale(14)" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <polygon points="12,2 22,7 12,12 2,7"/>
+    <polyline points="2,17 12,22 22,17"/>
+    <polyline points="2,12 12,17 22,12"/>
+  </g>
+</svg>
