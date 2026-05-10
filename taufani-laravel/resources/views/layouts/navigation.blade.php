@@ -15,6 +15,23 @@
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                         {{ __('Dashboard') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('expenses')" :active="request()->routeIs('expenses')">
+                        {{ __('Expenses') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('balances')" :active="request()->routeIs('balances')">
+                        {{ __('Balances') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('settle')" :active="request()->routeIs('settle')">
+                        {{ __('Settle') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('settings')" :active="request()->routeIs('settings')">
+                        {{ __('Settings') }}
+                    </x-nav-link>
+                </div>
+
+                <!-- Group Switcher -->
+                <div class="hidden sm:flex sm:items-center sm:ms-6">
+                    <livewire:group-switcher-nav />
                 </div>
             </div>
 
@@ -69,6 +86,18 @@
         <div class="pt-2 pb-3 space-y-1">
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                 {{ __('Dashboard') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('expenses')" :active="request()->routeIs('expenses')">
+                {{ __('Expenses') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('balances')" :active="request()->routeIs('balances')">
+                {{ __('Balances') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('settle')" :active="request()->routeIs('settle')">
+                {{ __('Settle') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('settings')" :active="request()->routeIs('settings')">
+                {{ __('Settings') }}
             </x-responsive-nav-link>
         </div>
 

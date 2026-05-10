@@ -3,7 +3,7 @@
 
         <!-- Header -->
         <div class="flex items-center gap-4">
-            <a href="{{ route('dashboard') }}" class="flex h-9 w-9 items-center justify-center rounded-2xl bg-white border border-slate-100 shadow-sm text-slate-500 hover:text-slate-900 transition-colors">
+            <a href="{{ route('dashboard') }}" wire:navigate class="flex h-9 w-9 items-center justify-center rounded-2xl bg-white border border-slate-100 shadow-sm text-slate-500 hover:text-slate-900 transition-colors">
                 <x-icon name="chevron-left" class="w-5 h-5" stroke-width="2.5" />
             </a>
             <div>
@@ -132,6 +132,24 @@
                     <x-primary-button>Update Password</x-primary-button>
                 </div>
             </form>
+        </div>
+
+        <!-- Sign Out -->
+        <div class="rounded-[2rem] bg-white border border-slate-100 shadow-sm overflow-hidden">
+            <div class="p-6 border-b border-slate-100">
+                <h3 class="text-sm font-bold text-slate-900">Sign Out</h3>
+                <p class="text-xs text-slate-400 mt-0.5">Sign out from this device</p>
+            </div>
+            <div class="p-6">
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit"
+                            class="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-slate-50 py-3.5 text-sm font-bold text-slate-700 transition-all hover:bg-slate-100 hover:border-slate-300 active:scale-[0.98]">
+                        <x-icon name="log-out" class="w-4 h-4" stroke-width="2.5" />
+                        Sign Out
+                    </button>
+                </form>
+            </div>
         </div>
 
         <!-- Danger Zone -->
