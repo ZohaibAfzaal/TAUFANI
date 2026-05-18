@@ -14,6 +14,7 @@ Route::middleware('auth')->group(function () {
     Volt::route('/groups', 'group-manager-view')->name('groups');
     Volt::route('/expenses', 'expenses-list')->name('expenses');
     Volt::route('/expenses/create', 'add-expense-form')->name('expenses.create');
+    Volt::route('/expenses/{expense}/edit', 'edit-expense-form')->name('expenses.edit');
     Volt::route('/balances', 'balances-overview')->name('balances');
     Volt::route('/settle', 'settle-up-view')->name('settle');
     Volt::route('/settings', 'group-settings-view')->name('settings');

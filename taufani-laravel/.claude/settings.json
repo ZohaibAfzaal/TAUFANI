@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Find \"e:\\\\Projects\\\\TAUFANI\\\\taufani-laravel\\\\resources\\\\views\\\\livewire\" -type f)",
+      "Bash(Find \"e:\\\\Projects\\\\TAUFANI\\\\taufani-laravel\\\\app\\\\Services\" -type f)",
+      "Bash(Find \"e:\\\\Projects\\\\TAUFANI\\\\taufani-laravel\\\\resources\\\\views\\\\components\" -type f -name \"*.blade.php\")",
+      "Bash(Grep -r \"Settlement::\" \"e:\\\\Projects\\\\TAUFANI\\\\taufani-laravel\\\\app\" --include=\"*.php\")",
+      "Bash(php -l \"e:\\\\Projects\\\\TAUFANI\\\\taufani-laravel\\\\resources\\\\views\\\\components\\\\edit-expense-form.blade.php\")"
+    ]
+  }
+}

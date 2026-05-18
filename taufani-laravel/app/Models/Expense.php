@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class Expense extends Model
 {
     use HasFactory;
-    protected $fillable = ['group_id', 'description', 'category', 'amount', 'paid_by', 'split_type', 'date'];
+    protected $fillable = ['group_id', 'description', 'category', 'amount', 'paid_by', 'created_by', 'split_type', 'date'];
 
     protected $casts = [
         'date' => 'date',
@@ -23,6 +23,11 @@ class Expense extends Model
     public function payer()
     {
         return $this->belongsTo(User::class, 'paid_by');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function participants()

@@ -215,6 +215,7 @@ new #[Layout('layouts.app')] class extends Component
                 'category'    => $this->category,
                 'amount'      => $this->amount,
                 'paid_by'     => $this->paidBy,
+                'created_by'  => Auth::id(),
                 'split_type'  => $this->splitType,
                 'date'        => $this->date,
             ]);
@@ -249,9 +250,9 @@ new #[Layout('layouts.app')] class extends Component
         //     'participant_count' => count($this->participants),
         // ]));
 
-        // Notify all group members
+        // Notify only the expense participants, excluding the person who just added it
         $expense->load(['group', 'payer', 'participants']);
-        $members = $expense->group->members;
+        $members = $expense->participants->filter(fn ($m) => $m->id !== Auth::id());
         // Log::info('[Mail] ExpenseAdded — queuing notifications', [
         //     'expense_id'   => $expense->id,
         //     'group'        => $expense->group->name,
@@ -270,7 +271,17 @@ new #[Layout('layouts.app')] class extends Component
             ]);
         }
 
-        $this->redirectRoute('dashboard', navigate: true);
+        session()->flash('sweetalert', [
+            'toast'             => true,
+            'icon'              => 'success',
+            'title'             => 'Expense added!',
+            'position'          => 'top-end',
+            'timer'             => 2500,
+            'timerProgressBar'  => true,
+            'showConfirmButton' => false,
+        ]);
+
+        $this->redirectRoute('expenses', navigate: true);
     }
 
     public function goBack(): void
@@ -386,7 +397,7 @@ new #[Layout('layouts.app')] class extends Component
                         <img src="https://api.dicebear.com/9.x/bottts-neutral/svg?seed={{ urlencode($member->name) }}"
                              alt="{{ $member->name }}"
                              class="h-6 w-6 rounded-full object-cover {{ $isSelected ? 'ring-2 ring-indigo-400' : '' }}">
-                        {{ explode(' ', $member->name)[0] }}
+                        {{ $member->name }}
                     </button>
                 @endforeach
             </div>
@@ -434,7 +445,7 @@ new #[Layout('layouts.app')] class extends Component
                                 @endif
                             </div>
                             <span class="flex-1 text-sm font-semibold truncate {{ $checked ? 'text-indigo-700' : 'text-slate-600' }}">
-                                {{ explode(' ', $member->name)[0] }}
+                                {{ $member->name }}
                             </span>
                         </button>
                     @endforeach

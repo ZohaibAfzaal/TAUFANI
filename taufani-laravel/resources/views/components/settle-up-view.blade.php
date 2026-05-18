@@ -45,11 +45,13 @@ new #[Layout('layouts.app')] class extends Component
 
         $members = $activeGroup->members()->orderBy('name')->get();
 
-        $balances = $calculator->calculate(collect([$this->activeGroupId]));
+        $userId = Auth::id();
+        $balances = $calculator->calculate(collect([$this->activeGroupId]), $userId);
         $balances = $calculator->withUsers($balances);
 
-        // Recent settlements
+        // Recent settlements involving the logged-in user
         $recentSettlements = Settlement::where('group_id', $this->activeGroupId)
+            ->where(fn ($q) => $q->where('from_id', $userId)->orWhere('to_id', $userId))
             ->with(['from', 'to'])
             ->latest()
             ->limit(10)
@@ -118,23 +120,33 @@ new #[Layout('layouts.app')] class extends Component
             </div>
         @endif
 
-        {{-- Quick suggestions --}}
+        {{-- Quick suggestions (filtered to logged-in user) --}}
         @if(count($suggestedSettlements) > 0)
             <div class="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
                 <div class="px-5 py-4 border-b border-slate-100">
-                    <h3 class="text-sm font-bold text-slate-900">Suggested Settlements</h3>
+                    <h3 class="text-sm font-bold text-slate-900">Your Suggested Settlements</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Tap Use to pre-fill the form</p>
                 </div>
                 <div class="divide-y divide-slate-50">
                     @foreach($suggestedSettlements as $settlement)
+                        @php
+                            $authId   = Auth::id();
+                            $youPay   = $settlement['from'] === $authId;
+                            $fromName = $settlement['from'] === $authId ? 'You' : $settlement['fromUser']->name;
+                            $toName   = $settlement['to']   === $authId ? 'You' : $settlement['toUser']->name;
+                            $rowCls   = $youPay ? 'text-rose-600' : 'text-emerald-600';
+                            $pillTxt  = $youPay ? 'You owe' : 'Owes you';
+                            $pillCls  = $youPay ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700';
+                        @endphp
                         <div class="flex items-center justify-between px-5 py-4">
                             <div class="flex items-center gap-2 min-w-0">
-                                <span class="text-sm font-semibold text-slate-900 truncate">{{ $settlement['fromUser']->name }}</span>
-                                <x-icon name="arrow-right" class="w-4 h-4 text-slate-300 shrink-0" stroke-width="2.5" />
-                                <span class="text-sm font-semibold text-slate-900 truncate">{{ $settlement['toUser']->name }}</span>
+                                <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold {{ $pillCls }}">{{ $pillTxt }}</span>
+                                <span class="text-sm font-semibold text-slate-900 truncate">
+                                    {{ $youPay ? $toName : $fromName }}
+                                </span>
                             </div>
                             <div class="flex items-center gap-3 shrink-0">
-                                <span class="text-sm font-bold text-slate-900">RS{{ number_format($settlement['amount'], 2) }}</span>
+                                <span class="text-sm font-bold {{ $rowCls }}">RS{{ number_format($settlement['amount'], 2) }}</span>
                                 <button wire:click="useSuggestion({{ $settlement['from'] }}, {{ $settlement['to'] }}, {{ $settlement['amount'] }})"
                                         class="rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition-colors">
                                     Use
@@ -208,20 +220,27 @@ new #[Layout('layouts.app')] class extends Component
             @endif
         </div>
 
-        {{-- Recent settlements --}}
+        {{-- Recent settlements (only involving logged-in user) --}}
         @if($recentSettlements->count() > 0)
             <div class="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
                 <div class="px-5 py-4 border-b border-slate-100">
-                    <h3 class="text-sm font-bold text-slate-900">Recent Settlements</h3>
+                    <h3 class="text-sm font-bold text-slate-900">Your Recent Settlements</h3>
                 </div>
                 <div class="divide-y divide-slate-50">
                     @foreach($recentSettlements as $settlement)
-                        <div class="flex items-center justify-between px-5 py-4 hover:bg-slate-50/50 transition-colors">
+                        @php
+                            $youPaid = $settlement->from_id === Auth::id();
+                            $rowCls  = $youPaid ? 'bg-rose-50/40' : 'bg-emerald-50/40';
+                            $amtCls  = $youPaid ? 'text-rose-600' : 'text-emerald-600';
+                            $pill    = $youPaid ? ['bg-rose-100 text-rose-700', 'You paid'] : ['bg-emerald-100 text-emerald-700', 'You received'];
+                        @endphp
+                        <div class="flex items-center justify-between px-5 py-4 {{ $rowCls }} hover:opacity-80 transition-colors">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-sm font-semibold text-slate-900 truncate">{{ $settlement->from->name }}</span>
-                                    <x-icon name="arrow-right" class="w-4 h-4 text-slate-300 shrink-0" stroke-width="2.5" />
-                                    <span class="text-sm font-semibold text-slate-900 truncate">{{ $settlement->to->name }}</span>
+                                    <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold {{ $pill[0] }}">{{ $pill[1] }}</span>
+                                    <span class="text-sm font-semibold text-slate-900 truncate">
+                                        {{ $youPaid ? $settlement->to->name : $settlement->from->name }}
+                                    </span>
                                 </div>
                                 <div class="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
                                     <span>{{ $settlement->date->format('M d, Y') }}</span>
@@ -231,7 +250,9 @@ new #[Layout('layouts.app')] class extends Component
                                     @endif
                                 </div>
                             </div>
-                            <p class="ml-4 shrink-0 text-sm font-bold text-slate-900">RS{{ number_format($settlement->amount, 2) }}</p>
+                            <p class="ml-4 shrink-0 text-sm font-bold {{ $amtCls }}">
+                                {{ $youPaid ? '-' : '+' }}RS{{ number_format($settlement->amount, 2) }}
+                            </p>
                         </div>
                     @endforeach
                 </div>
@@ -239,7 +260,7 @@ new #[Layout('layouts.app')] class extends Component
         @else
             <div class="rounded-2xl bg-white border border-slate-100 shadow-sm py-12 text-center">
                 <x-icon name="arrow-right-left" class="w-8 h-8 text-slate-200 mx-auto mb-2" stroke-width="1.5" />
-                <p class="text-sm font-medium text-slate-400">No settlements recorded yet</p>
+                <p class="text-sm font-medium text-slate-400">No settlements involving you yet</p>
             </div>
         @endif
     </div>

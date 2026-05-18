@@ -23,6 +23,7 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         @livewireStyles
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
         @php use Illuminate\Support\Facades\Storage; @endphp
 
         <style>
@@ -119,21 +120,21 @@
                 <div class="flex items-center justify-around py-3 px-2 rounded-[2.5rem] bg-white/80 backdrop-blur-xl shadow-2xl shadow-indigo-100/60 border border-white/60">
 
                     <a href="{{ route('dashboard') }}" wire:navigate
-                       class="flex flex-col items-center gap-1 px-5 py-2 rounded-2xl transition-all {{ request()->routeIs('dashboard') ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600' }}">
+                       class="flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all {{ request()->routeIs('dashboard') ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600' }}">
                         <x-icon name="layout-dashboard" class="w-[22px] h-[22px]" stroke-width="{{ request()->routeIs('dashboard') ? '3' : '2' }}" />
                         <span class="text-[9px] font-bold uppercase tracking-widest">Dash</span>
                     </a>
 
-                    <a href="{{ route('expenses.create') }}" wire:navigate
-                       class="flex h-13 w-13 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-xl shadow-indigo-200 transition-all hover:scale-110 hover:bg-indigo-700 active:scale-90"
-                       style="width:3.25rem;height:3.25rem">
-                        <x-icon name="plus" class="w-6 h-6" stroke-width="3" />
-                    </a>
-
                     <a href="{{ route('expenses') }}" wire:navigate
-                       class="flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all {{ request()->routeIs('expenses') ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600' }}">
+                       class="flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all {{ request()->routeIs('expenses') ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600' }}">
                         <x-icon name="receipt" class="w-[22px] h-[22px]" stroke-width="{{ request()->routeIs('expenses') ? '3' : '2' }}" />
                         <span class="text-[9px] font-bold uppercase tracking-widest">Expenses</span>
+                    </a>
+
+                    <a href="{{ route('expenses.create') }}" wire:navigate
+                       class="flex items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-xl shadow-indigo-200 transition-all hover:scale-110 hover:bg-indigo-700 active:scale-90"
+                       style="width:3.25rem;height:3.25rem">
+                        <x-icon name="plus" class="w-6 h-6" stroke-width="3" />
                     </a>
 
                     <a href="{{ route('balances') }}" wire:navigate
@@ -153,9 +154,43 @@
         </div>
 
         @livewireScripts
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+        {{-- Session flash → SweetAlert toast (fires after wire:navigate lands) --}}
+        @if(session()->has('sweetalert'))
+        <script>
+            document.addEventListener('livewire:navigated', function handler() {
+                document.removeEventListener('livewire:navigated', handler);
+                Swal.fire(@json(session('sweetalert')));
+            }, { once: true });
+        </script>
+        @endif
+
+        <script>
+            // Global SweetAlert helpers used by Livewire components
+            window.swalToast = (icon, title) => Swal.fire({
+                toast: true, icon, title,
+                position: 'top-end',
+                timer: 2500,
+                timerProgressBar: true,
+                showConfirmButton: false,
+            });
+
+            window.swalConfirm = (title, text, confirmText = 'Delete', icon = 'warning') =>
+                Swal.fire({
+                    title, text, icon,
+                    showCancelButton: true,
+                    confirmButtonColor: '#ef4444',
+                    cancelButtonColor: '#6b7280',
+                    confirmButtonText: confirmText,
+                    cancelButtonText: 'Cancel',
+                    borderRadius: '1rem',
+                });
+        </script>
 
         <script>
             document.addEventListener('livewire:initialized', () => {
+                Livewire.on('show-toast', ({ icon, title }) => swalToast(icon, title));
                 const bar     = document.getElementById('lw-progress-bar');
                 const spinner = document.getElementById('lw-spinner');
                 let spinnerTimer = null;

@@ -42,8 +42,11 @@ new class extends Component
             ? Group::find($this->selectedGroupId)?->members ?? collect()
             : collect();
 
+        $userId = Auth::id();
+
         $recentSettlements = $this->selectedGroupId
             ? Settlement::where('group_id', $this->selectedGroupId)
+                ->where(fn ($q) => $q->where('from_id', $userId)->orWhere('to_id', $userId))
                 ->with(['from', 'to'])
                 ->latest()
                 ->take(5)
@@ -54,7 +57,7 @@ new class extends Component
         if ($this->selectedGroupId) {
             $calculator    = new BalanceCalculator();
             $groupBalances = $calculator->withUsers(
-                $calculator->calculate(collect([$this->selectedGroupId]))
+                $calculator->calculate(collect([$this->selectedGroupId]), $userId)
             );
         }
 

@@ -118,10 +118,14 @@ new #[Layout('layouts.app')] class extends Component
     public function deleteExpense(int $id): void
     {
         $expense = Expense::findOrFail($id);
-        $group = \App\Models\Group::find($this->activeGroupId);
-        abort_unless($group && $group->members()->where('users.id', Auth::id())->exists(), 403);
+        abort_unless(
+            $expense->created_by === Auth::id() ||
+            ($expense->created_by === null && $expense->paid_by === Auth::id()),
+            403
+        );
         $expense->participants()->detach();
         $expense->delete();
+        $this->dispatch('show-toast', icon: 'success', title: 'Expense deleted');
         $this->resetPage();
     }
 };
@@ -203,14 +207,22 @@ new #[Layout('layouts.app')] class extends Component
                                     · {{ $expense->date->format('M d') }}
                                 </p>
                             </div>
-                            {{-- Amount + delete --}}
+                            {{-- Amount + actions (creator only) --}}
                             <div class="flex flex-col items-end gap-2 shrink-0">
                                 <p class="text-sm font-black text-slate-900">RS{{ number_format($expense->amount, 0) }}</p>
-                                <button wire:click="deleteExpense({{ $expense->id }})"
-                                        onclick="return confirm('Delete \'{{ addslashes($expense->description) }}\'?')"
-                                        class="text-slate-300 hover:text-rose-500 transition-colors">
-                                    <x-icon name="trash" class="w-4 h-4" stroke-width="2" />
-                                </button>
+                                @if($expense->created_by === Auth::id() || ($expense->created_by === null && $expense->paid_by === Auth::id()))
+                                    <div class="flex items-center gap-2">
+                                        <a href="{{ route('expenses.edit', $expense) }}" wire:navigate
+                                           class="text-slate-300 hover:text-indigo-500 transition-colors">
+                                            <x-icon name="square-pen" class="w-4 h-4" stroke-width="2" />
+                                        </a>
+                                        <button x-data
+                                                @click="swalConfirm('Delete Expense?', '{{ addslashes($expense->description) }}').then(r => r.isConfirmed && $wire.deleteExpense({{ $expense->id }}))"
+                                                class="text-slate-300 hover:text-rose-500 transition-colors">
+                                            <x-icon name="trash" class="w-4 h-4" stroke-width="2" />
+                                        </button>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                         {{-- Participant chips --}}
@@ -218,7 +230,7 @@ new #[Layout('layouts.app')] class extends Component
                             <div class="flex flex-wrap gap-1.5 px-4 pb-3">
                                 @foreach($expense->participants as $p)
                                     <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
-                                        {{ explode(' ', $p->name)[0] }}
+                                        {{ $p->name }}
                                     </span>
                                 @endforeach
                             </div>
